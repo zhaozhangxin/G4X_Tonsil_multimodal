@@ -1,0 +1,40 @@
+# ── Data (large raw and processed files) ──────────────────────────────────────
+data/raw/
+data/processed/
+
+# ── Pipeline outputs ───────────────────────────────────────────────────────────
+results/*.h5ad
+results/*.h5mu
+*.geojson
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.env
+.venv
+env/
+venv/
+
+# ── OS / editor artifacts ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

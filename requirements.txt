@@ -1,0 +1,16 @@
+pandas
+numpy
+Pillow
+matplotlib
+tifffile
+anndata
+mudata
+scipy
+scikit-image
+shapely
+tqdm
+opencv-python
+tensorflow
+deepcell
+pyqupath
+pycodex

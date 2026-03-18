@@ -1,0 +1,28 @@
+name: g4x_prepro
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    - pandas
+    - numpy
+    - Pillow
+    - matplotlib
+    - tifffile
+    - anndata
+    - mudata
+    - scipy
+    - scikit-image
+    - shapely
+    - tqdm
+    - opencv-python
+    # deepcell requires tensorflow; install tensorflow first so deepcell
+    # can find a compatible version
+    - tensorflow
+    - deepcell
+    - pyqupath
+    - pycodex
