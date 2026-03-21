@@ -14,3 +14,8 @@ tensorflow
 deepcell
 pyqupath
 pycodex
+# Step 05 — RNA & protein preprocessing
+scanpy
+seaborn
+igraph
+codex_preprocessing

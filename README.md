@@ -2,9 +2,11 @@
 
 A preprocessing pipeline for **Singular Genomics G4X** platform data,
 demonstrated on a human tonsil dataset (Rep 1). The pipeline takes raw H&E,
-RNA transcript, and multiplexed protein images as inputs and produces a
-ready-to-analyze multimodal single-cell object (MuData) combining 348 RNA
-genes and 16 protein markers across 230,446 segmented cells.
+RNA transcript, and multiplexed protein images as inputs and produces
+fully preprocessed, analysis-ready AnnData objects for both modalities:
+348 RNA genes and 16 protein markers across 230,446 segmented cells,
+with QC filtering, normalization, dimensionality reduction, and clustering
+applied to each modality.
 
 ---
 
@@ -44,6 +46,16 @@ Step 04 — Build Cell-Gene Matrix
    Output: results/tonsil_rep1_rna.h5ad
            results/tonsil_rep1_protein.h5ad
            results/tonsil_rep1.h5mu
+   │
+   v
+Step 05 — Preprocess RNA and Protein
+   RNA: QC (min 50 genes/cell, min 3 cells/gene) → Scrublet doublet removal →
+   normalization (1e4) → log1p → top-300 HVGs → PCA → UMAP → Leiden clustering.
+   Protein: cell-size outlier filtering (3 MAD) → zero-nuclear removal →
+   nucleus-signal normalization → arcsinh (cofactor=0.01) → quantile normalization.
+   Output: results/tonsil_rep1_rna_processed.h5ad
+           results/tonsil_rep1_protein_processed.h5ad
+           results/plots/
 ```
 
 ---
@@ -56,7 +68,8 @@ G4X_prepro/
 │   ├── 01_visualize_transcripts_on_he.py
 │   ├── 02_segmentation.py
 │   ├── 03_convert_to_geojson.py
-│   └── 04_build_cell_gene_matrix.py
+│   ├── 04_build_cell_gene_matrix.py
+│   └── 05_preprocess_rna_protein.py
 ├── utils/
 │   ├── __init__.py
 │   ├── io_setup.py            # GPU setup, logging, metadata I/O
@@ -137,6 +150,12 @@ python scripts/03_convert_to_geojson.py
 python scripts/04_build_cell_gene_matrix.py
 ```
 
+### Step 5 — Preprocess RNA and protein
+
+```bash
+python scripts/05_preprocess_rna_protein.py
+```
+
 ---
 
 ## Outputs
@@ -150,6 +169,9 @@ python scripts/04_build_cell_gene_matrix.py
 | `results/tonsil_rep1_rna.h5ad` | RNA AnnData (230,446 cells x 348 genes) |
 | `results/tonsil_rep1_protein.h5ad` | Protein AnnData (230,446 cells x 16 markers) |
 | `results/tonsil_rep1.h5mu` | MuData combining RNA and protein modalities |
+| `results/tonsil_rep1_rna_processed.h5ad` | Preprocessed RNA (QC + normalization + UMAP + Leiden) |
+| `results/tonsil_rep1_protein_processed.h5ad` | Preprocessed protein (filtered + arcsinh + quantile normalized) |
+| `results/plots/` | QC, HVG, PCA variance, and UMAP figures |
 
 ---
 
@@ -170,6 +192,10 @@ Core dependencies and their roles:
 | `opencv-python` | Otsu thresholding in marker preprocessing |
 | `Pillow` | JPEG 2000 H&E image loading |
 | `matplotlib` | Visualization |
+| `scanpy` | RNA QC, normalization, PCA, UMAP, Leiden clustering |
+| `seaborn` | KDE plots for protein normalization QC |
+| `igraph` | Leiden community detection backend |
+| `codex_preprocessing` | Protein nucleus-signal normalization, arcsinh, quantile normalization |
 
 ---
 
@@ -214,6 +240,37 @@ and more memory-efficient on large masks.
   metadata (`Y_cent`, `X_cent`, `cellSize`).
 - Both modalities are intersected on cell ID and saved as a `MuData` object.
 
+### RNA Preprocessing
+
+`scripts/05_preprocess_rna_protein.py` applies a standard scanpy single-cell
+workflow to the RNA modality:
+
+- **QC**: cells with fewer than 50 detected genes and genes detected in fewer
+  than 3 cells are removed.
+- **Doublet removal**: Scrublet is run on the single-sample data (no batch key)
+  to flag and remove predicted doublets.
+- **Normalization**: total-count normalization to 10,000 counts per cell,
+  followed by log1p transformation.
+- **Dimensionality reduction**: top-300 highly variable genes selected for PCA;
+  UMAP computed from the PCA embedding (no Harmony needed for a single sample).
+- **Clustering**: Leiden algorithm (`flavor='igraph'`, `resolution=1`) applied
+  to the neighbor graph.
+
+### Protein Preprocessing
+
+The protein modality uses `codex_preprocessing` to handle multiplex imaging
+signal characteristics:
+
+- **Filtering**: cells outside 3 MAD of the median cell size are removed;
+  cells with zero nuclear signal are discarded.
+- **Nucleus-signal normalization**: each marker intensity is normalized by the
+  nuclear signal within each sample, correcting for cell-to-cell variation in
+  staining depth.
+- **Arcsinh transformation**: applied with cofactor 0.01, compressing the
+  heavy-tailed distribution typical of protein imaging data.
+- **Quantile normalization**: per-marker 1st–99.9th percentile rescaling to
+  bring all markers onto a comparable range.
+
 ---
 
 ## Dataset Statistics (Tonsil Rep 1)
@@ -227,3 +284,6 @@ and more memory-efficient on large masks.
 | Protein markers | 16 |
 | Image size | 19,200 x 15,232 px |
 | Pixel size | 0.3125 um/px |
+| RNA cells after QC + doublet removal | 27,145 |
+| RNA genes after QC | 321 |
+| Protein cells after size + nuclear filtering | ~208,177 |
