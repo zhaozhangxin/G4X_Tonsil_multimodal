@@ -13,8 +13,8 @@ dependencies:
     - Pillow
     - matplotlib
     - tifffile
-    - anndata
-    - mudata
+    - "anndata>=0.12.10"  # required by Step 10 (MuData matching)
+    - "mudata>=0.3.3"    # required by Step 10
     - scipy
     - scikit-image
     - shapely

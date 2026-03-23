@@ -56,6 +56,36 @@ Step 05 — Preprocess RNA and Protein
    Output: results/tonsil_rep1_rna_processed.h5ad
            results/tonsil_rep1_protein_processed.h5ad
            results/plots/
+   │
+   v
+Step 07 — Extract Per-Cell H&E Patches  [env: g4x_prepro]
+   For every cell in the preprocessed RNA AnnData, crop a square patch centred
+   on the cell from the H&E JPEG-2000 image at six sizes (64, 128, 256, 448, 512 px,
+   plus original bounding-box size). A single O(H×W) bounding-box scan and a
+   multiprocessing pool (fork context) make this step fast even for 200k+ cells.
+   Checkpoint-resume: already-written patches are skipped automatically.
+   Output: results/cell_patches_tiff/{fixed_64,fixed_128,...,original_size}/<cell_id>.tiff
+   │
+   v
+Step 08 — CONCH Feature Extraction  [env: conch]
+   Pass each cell patch through the CONCH ViT-B/16 image encoder to obtain a
+   512-dimensional morphological embedding. Requires the CONCH model weights
+   (see Installation → CONCH model below).
+   Output: results/conch_features/conch_features_tonsil_{size_folder}.csv
+           results/conch_features/conch_metadata_tonsil_{size_folder}.csv
+   │
+   v
+Step 09 — CONCH Features → AnnData  [env: conch]
+   Load each feature CSV, apply PCA (512 → 500 dims), and save as an AnnData
+   (.h5ad) ready for multimodal integration.
+   Output: results/conch_features/tonsil_CONCH_he_conch_{size_folder}_prepro.h5ad
+   │
+   v
+Step 10 — Build Multimodal MuData  [env: g4x_prepro]
+   Intersect cells across RNA, protein, and H&E modalities by cell ID and
+   combine into a MuData object with modalities 'rna', 'protein', and 'he'.
+   Spatial coordinates (X_cent, Y_cent) are stored in mdata.obsm['spatial'].
+   Output: results/conch_features/tonsil_multimodal_{size_folder}_matched.h5mu
 ```
 
 ---
@@ -65,11 +95,15 @@ Step 05 — Preprocess RNA and Protein
 ```
 G4X_prepro/
 ├── scripts/
-│   ├── 01_visualize_transcripts_on_he.py
-│   ├── 02_segmentation.py
-│   ├── 03_convert_to_geojson.py
-│   ├── 04_build_cell_gene_matrix.py
-│   └── 05_preprocess_rna_protein.py
+│   ├── 01_visualize_transcripts_on_he.py   # env: g4x_prepro
+│   ├── 02_segmentation.py                  # env: g4x_prepro
+│   ├── 03_convert_to_geojson.py            # env: g4x_prepro
+│   ├── 04_build_cell_gene_matrix.py        # env: g4x_prepro
+│   ├── 05_preprocess_rna_protein.py        # env: g4x_prepro
+│   ├── 07_extract_cell_patches.py          # env: g4x_prepro
+│   ├── 08_conch_extract_features.py        # env: conch
+│   ├── 09_conch_to_anndata.py              # env: conch
+│   └── 10_build_multimodal_mudata.py       # env: g4x_prepro
 ├── utils/
 │   ├── __init__.py
 │   ├── io_setup.py            # GPU setup, logging, metadata I/O
@@ -79,7 +113,8 @@ G4X_prepro/
 │   └── README.md              # Data download and setup instructions
 ├── results/                   # Pipeline outputs (gitignored for large files)
 ├── requirements.txt
-├── environment.yml
+├── environment.yml            # Main conda environment (Steps 01–05, 07, 10)
+├── environment_conch.yml      # CONCH conda environment (Steps 08–09)
 ├── .gitignore
 └── README.md
 ```
@@ -95,7 +130,7 @@ git clone https://github.com/<your-org>/G4X_prepro.git
 cd G4X_prepro
 ```
 
-### 2. Create and activate the conda environment
+### 2. Create the main conda environment (Steps 01–05, 07, 10)
 
 ```bash
 conda env create -f environment.yml
@@ -106,6 +141,33 @@ conda activate g4x_prepro
 > TensorFlow first so that deepcell can resolve a compatible version.
 > GPU support requires a CUDA-compatible driver; see the
 > [TensorFlow GPU guide](https://www.tensorflow.org/install/pip) for details.
+
+### 3. Create the CONCH conda environment (Steps 08–09)
+
+Steps 08 and 09 run in a separate environment that pins `anndata==0.11.4`
+(the version compatible with the CONCH package) and bundles PyTorch.
+
+```bash
+conda env create -f environment_conch.yml
+conda activate conch
+pip install git+https://github.com/mahmoodlab/CONCH.git
+```
+
+### 4. Download the CONCH model weights
+
+Request access and download `pytorch_model.bin` from the official release:
+
+> https://huggingface.co/MahmoodLab/CONCH
+
+Place the file at:
+
+```
+data/CONCH/checkpoints/conch/pytorch_model.bin
+```
+
+> **Reference:** Lu, M. Y. et al. (2024). A visual-language foundation model
+> for computational pathology. *Nature Medicine*, 30, 863–874.
+> https://doi.org/10.1038/s41591-024-02856-4
 
 ---
 
@@ -156,6 +218,38 @@ python scripts/04_build_cell_gene_matrix.py
 python scripts/05_preprocess_rna_protein.py
 ```
 
+### Step 7 — Extract per-cell H&E patches  `[env: g4x_prepro]`
+
+```bash
+conda activate g4x_prepro
+python scripts/07_extract_cell_patches.py
+```
+
+Adjust `NUM_WORKERS` at the top of the script to match available CPU cores.
+
+### Step 8 — Extract CONCH features  `[env: conch]`
+
+```bash
+conda activate conch
+python scripts/08_conch_extract_features.py
+```
+
+Set `GPU_ID` at the top of the script to select the target GPU.
+
+### Step 9 — CONCH features → AnnData  `[env: conch]`
+
+```bash
+conda activate conch
+python scripts/09_conch_to_anndata.py
+```
+
+### Step 10 — Build multimodal MuData  `[env: g4x_prepro]`
+
+```bash
+conda activate g4x_prepro
+python scripts/10_build_multimodal_mudata.py
+```
+
 ---
 
 ## Outputs
@@ -172,6 +266,11 @@ python scripts/05_preprocess_rna_protein.py
 | `results/tonsil_rep1_rna_processed.h5ad` | Preprocessed RNA (QC + normalization + UMAP + Leiden) |
 | `results/tonsil_rep1_protein_processed.h5ad` | Preprocessed protein (filtered + arcsinh + quantile normalized) |
 | `results/plots/` | QC, HVG, PCA variance, and UMAP figures |
+| `results/cell_patches_tiff/fixed_{64,128,256,448,512}/` | Per-cell H&E patches at fixed sizes |
+| `results/cell_patches_tiff/original_size/` | Per-cell H&E patches at original bounding-box size |
+| `results/conch_features/conch_features_tonsil_*.csv` | Raw CONCH 512-dim features per size folder |
+| `results/conch_features/tonsil_CONCH_he_conch_*_prepro.h5ad` | CONCH AnnData with PCA (n_cells × 512 / 500) |
+| `results/conch_features/tonsil_multimodal_*_matched.h5mu` | MuData combining RNA + protein + H&E |
 
 ---
 
@@ -196,6 +295,8 @@ Core dependencies and their roles:
 | `seaborn` | KDE plots for protein normalization QC |
 | `igraph` | Leiden community detection backend |
 | `codex_preprocessing` | Protein nucleus-signal normalization, arcsinh, quantile normalization |
+| `torch` + `conch` | CONCH ViT-B/16 H&E image encoder (Steps 08–09, `conch` env) |
+| `mudata` ≥ 0.3.3 | Multimodal data container combining RNA, protein, H&E |
 
 ---
 
