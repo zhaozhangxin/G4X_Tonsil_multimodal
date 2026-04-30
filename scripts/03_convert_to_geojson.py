@@ -34,6 +34,9 @@ import tifffile
 from skimage import measure
 
 # ── Configuration ─────────────────────────────────────────────────────────────
+# MASK_PATH must point at a 2D integer-label TIFF (0 = background, 1..N = cells).
+# Default: the Mesmer mask produced by 02_segmentation.py.
+# To use your own segmentation, override MASK_PATH (and OUTPUT_PATH) below.
 DATA_ROOT = Path(__file__).parent.parent / "data"
 
 SEGMENTATION_TAG = "260316_g4xtonsil_cell"

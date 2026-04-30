@@ -45,8 +45,11 @@ from tqdm import tqdm
 Image.MAX_IMAGE_PIXELS = None
 
 # ─────────────────────────────────────────────
-# Paths  (run from repository root)
+# Configuration  (run from repository root)
 # ─────────────────────────────────────────────
+# Override MASK_PATH below to use your own segmentation. Cell IDs in the mask
+# must match those in the RNA AnnData (which 04_build_cell_gene_matrix.py
+# guarantees, since RNA cells come from the same mask).
 MASK_PATH    = os.path.join("data", "processed", "segmentation_mask.tiff")
 HE_PATH      = os.path.join("data", "h_and_e.jp2")
 RNA_PATH     = os.path.join("results", "tonsil_rep1_rna_processed.h5ad")

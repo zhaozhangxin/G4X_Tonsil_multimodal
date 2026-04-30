@@ -24,15 +24,28 @@ Inputs
 ------
 - data/processed/<SEGMENTATION_TAG>/segmentation_mask.tiff
 - data/raw/rna/transcript_table.csv.gz
-- data/processed/<SEGMENTATION_TAG>/dataScaleSize.csv
+- data/processed/<SEGMENTATION_TAG>/dataScaleSize.csv   (only if
+  RECOMPUTE_PROTEIN_FROM_OMETIFF == False)
+- data/raw/ometiff/G04.ome.tiff                          (only if
+  RECOMPUTE_PROTEIN_FROM_OMETIFF == True)
 
 Outputs
 -------
 - results/tonsil_rep1_rna.h5ad         : RNA AnnData  (230,446 cells x 348 genes)
 - results/tonsil_rep1_protein.h5ad     : Protein AnnData (230,446 cells x 16 markers)
 - results/tonsil_rep1.h5mu             : MuData (RNA + Protein)
+
+Custom segmentation
+-------------------
+Every modality this script writes (RNA + Protein) is grounded in MASK_PATH:
+- RNA counts are always re-binned by mask cell ID, so they always match.
+- Protein quantification comes from PROTEIN_PATH, which is produced by
+  02_segmentation.py with the *Mesmer* mask. If you swap MASK_PATH for your
+  own segmentation, set RECOMPUTE_PROTEIN_FROM_OMETIFF = True so the protein
+  table is re-derived from OMETIFF_PATH using YOUR mask.
 """
 
+import sys
 from pathlib import Path
 
 import anndata as ad
@@ -42,15 +55,23 @@ import pandas as pd
 import tifffile
 from scipy.sparse import csr_matrix
 
+# Allow imports from the utils/ package next to scripts/
+sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 DATA_ROOT   = Path(__file__).parent.parent / "data"
 RESULTS_DIR = Path(__file__).parent.parent / "results"
 
 SEGMENTATION_TAG = "260316_g4xtonsil_cell"
 
+# Set True when MASK_PATH points at a custom (non-Mesmer) segmentation, so
+# protein per-cell values are re-computed from the OME-TIFF using YOUR mask.
+RECOMPUTE_PROTEIN_FROM_OMETIFF = False
+
 MASK_PATH       = DATA_ROOT / "processed" / SEGMENTATION_TAG / "segmentation_mask.tiff"
 TRANSCRIPT_PATH = DATA_ROOT / "raw" / "rna" / "transcript_table.csv.gz"
 PROTEIN_PATH    = DATA_ROOT / "processed" / SEGMENTATION_TAG / "dataScaleSize.csv"
+OMETIFF_PATH    = DATA_ROOT / "raw" / "ometiff" / "G04.ome.tiff"
 
 OUTPUT_PATH         = RESULTS_DIR / "tonsil_rep1.h5mu"
 RNA_OUTPUT_PATH     = RESULTS_DIR / "tonsil_rep1_rna.h5ad"
@@ -126,12 +147,26 @@ adata_rna = ad.AnnData(
 print(f"  RNA AnnData: {adata_rna.shape}  (cells x genes)")
 
 # ── Step 8: Build Protein AnnData ────────────────────────────────────────────
-print("Loading protein data...")
-prot_df = pd.read_csv(PROTEIN_PATH, index_col=0)
+if RECOMPUTE_PROTEIN_FROM_OMETIFF:
+    # Load OME-TIFF channels and quantify per cell using OUR mask, so cellLabel
+    # IDs come from MASK_PATH rather than 02_segmentation.py's Mesmer mask.
+    print(f"Recomputing per-cell protein from OME-TIFF: {OMETIFF_PATH}")
+    from pyqupath.tiff import TiffZarrReader
+    from segmentation import extract_cell_features
 
-# cellLabel is the cell ID; use it as obs index
-prot_df = prot_df.set_index("cellLabel")
-prot_df.index = prot_df.index.astype(str)
+    marker_dict = TiffZarrReader.from_ometiff(OMETIFF_PATH).zimg_dict
+    print(f"  Markers in OME-TIFF: {list(marker_dict.keys())}")
+
+    _, prot_df = extract_cell_features(marker_dict, mask)
+    prot_df = prot_df.set_index("cellLabel")
+    prot_df.index = prot_df.index.astype(str)
+else:
+    print(f"Loading protein data from {PROTEIN_PATH} ...")
+    prot_df = pd.read_csv(PROTEIN_PATH, index_col=0)
+
+    # cellLabel is the cell ID; use it as obs index
+    prot_df = prot_df.set_index("cellLabel")
+    prot_df.index = prot_df.index.astype(str)
 
 # Metadata columns to keep in obs
 meta_cols = ["cellSize", "Y_cent", "X_cent"]
